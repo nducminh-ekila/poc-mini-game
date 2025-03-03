@@ -55,24 +55,31 @@ function Game() {
     setCircles(prev => [...prev, newCircle]);
   };
 
-  const handleMouseDown = (e, id) => {
+  const handleStartDrag = (e, id) => {
+    e.preventDefault();
     const circle = circles.find(c => c.id === id);
     if (!circle || !containerRef.current) return;
     const containerRect = containerRef.current.getBoundingClientRect();
-    const mouseX = e.clientX - containerRect.left;
-    const mouseY = e.clientY - containerRect.top;
+    // Xác định tọa độ client từ mouse hoặc touch
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const mouseX = clientX - containerRect.left;
+    const mouseY = clientY - containerRect.top;
     dragOffset.current = { 
       offsetX: mouseX - circle.x, 
       offsetY: mouseY - circle.y 
     };
     setDraggingId(id);
   };
-
-  const handleMouseMove = (e) => {
+  
+  const handleMove = (e) => {
     if (draggingId && containerRef.current) {
+      e.preventDefault();
       const containerRect = containerRef.current.getBoundingClientRect();
-      const mouseX = e.clientX - containerRect.left;
-      const mouseY = e.clientY - containerRect.top;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const mouseX = clientX - containerRect.left;
+      const mouseY = clientY - containerRect.top;
       setCircles(prev =>
         prev.map(c => {
           if (c.id === draggingId) {
@@ -87,19 +94,25 @@ function Game() {
       );
     }
   };
-
-  const handleMouseUp = () => {
+  
+  const handleEndDrag = () => {
     setDraggingId(null);
   };
-
+  
   useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    // Đăng ký cả sự kiện mouse và touch
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEndDrag);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEndDrag);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEndDrag);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEndDrag);
     };
   }, [draggingId]);
+  
 
   // Vòng lặp cập nhật va chạm, merge và hiệu ứng đẩy
   useEffect(() => {
@@ -196,7 +209,7 @@ function Game() {
       {circles.map(circle => (
         <div
           key={circle.id}
-          onMouseDown={e => handleMouseDown(e, circle.id)}
+          onMouseDown={e => handleStartDrag(e, circle.id)}
           style={{
             position: 'absolute',
             left: circle.x - circle.radius,
