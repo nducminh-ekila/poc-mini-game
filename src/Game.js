@@ -3,21 +3,21 @@ import React, { useState, useRef, useEffect } from 'react';
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 const CIRCLE_RADIUS = 30;
-const MERGE_DURATION = 2000; // thời gian (ms) sau khi gộp
+const MERGE_DURATION = 2000; // thời gian (ms) chờ trước khi xoá merge
+// Thời gian cooldown có thể dùng nếu bạn muốn giới hạn spawn liên tục
+const COLLISION_COOLDOWN = 500;
 
-// Hàm khởi tạo các hình tròn với vị trí random
 const initialCircles = () => {
   let circles = [];
-  const n = 5, m = 5; // số lượng hình tròn A và C
+  const n = 5, m = 5; // số lượng ban đầu của A và C
   for (let i = 0; i < n; i++) {
     circles.push({
       id: 'A-' + i,
       type: 'A',
-      // lưu tọa độ trung tâm theo hệ tọa độ của container
       x: Math.random() * (GAME_WIDTH - 2 * CIRCLE_RADIUS) + CIRCLE_RADIUS,
       y: Math.random() * (GAME_HEIGHT - 2 * CIRCLE_RADIUS) + CIRCLE_RADIUS,
       radius: CIRCLE_RADIUS,
-      isMerging: false, // đánh dấu quá trình gộp
+      isMerging: false,
     });
   }
   for (let j = 0; j < m; j++) {
@@ -36,16 +36,29 @@ const initialCircles = () => {
 function Game() {
   const [circles, setCircles] = useState(initialCircles());
   const [draggingId, setDraggingId] = useState(null);
-  // Lưu offset giữa vị trí chuột (trong hệ container) và tâm hình tròn
-  const dragOffset = useRef({ offsetX: 0, offsetY: 0 });
   const containerRef = useRef(null);
+  const dragOffset = useRef({ offsetX: 0, offsetY: 0 });
+  const lastCollisionTimeRef = useRef(0);
+  const newCircleIdRef = useRef(0);
 
-  // Khi bắt đầu kéo, tính toán offset dựa trên tọa độ của container
+  // Hàm tạo hình tròn mới với type được random
+  const spawnNewCircle = () => {
+    const type = Math.random() < 0.5 ? 'A' : 'C';
+    const newCircle = {
+      id: `new-${newCircleIdRef.current++}`,
+      type,
+      x: Math.random() * (GAME_WIDTH - 2 * CIRCLE_RADIUS) + CIRCLE_RADIUS,
+      y: Math.random() * (GAME_HEIGHT - 2 * CIRCLE_RADIUS) + CIRCLE_RADIUS,
+      radius: CIRCLE_RADIUS,
+      isMerging: false,
+    };
+    setCircles(prev => [...prev, newCircle]);
+  };
+
   const handleMouseDown = (e, id) => {
     const circle = circles.find(c => c.id === id);
     if (!circle || !containerRef.current) return;
     const containerRect = containerRef.current.getBoundingClientRect();
-    // chuyển đổi tọa độ chuột sang hệ container
     const mouseX = e.clientX - containerRect.left;
     const mouseY = e.clientY - containerRect.top;
     dragOffset.current = { 
@@ -55,7 +68,6 @@ function Game() {
     setDraggingId(id);
   };
 
-  // Khi di chuyển chuột, cập nhật vị trí hình tròn theo tọa độ của container
   const handleMouseMove = (e) => {
     if (draggingId && containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
@@ -66,7 +78,6 @@ function Game() {
           if (c.id === draggingId) {
             let newX = mouseX - dragOffset.current.offsetX;
             let newY = mouseY - dragOffset.current.offsetY;
-            // Giới hạn trong khu vực game
             newX = Math.max(c.radius, Math.min(GAME_WIDTH - c.radius, newX));
             newY = Math.max(c.radius, Math.min(GAME_HEIGHT - c.radius, newY));
             return { ...c, x: newX, y: newY };
@@ -77,7 +88,6 @@ function Game() {
     }
   };
 
-  // Kết thúc kéo thả
   const handleMouseUp = () => {
     setDraggingId(null);
   };
@@ -91,14 +101,14 @@ function Game() {
     };
   }, [draggingId]);
 
-  // Vòng lặp cập nhật va chạm và hiệu ứng đẩy
+  // Vòng lặp cập nhật va chạm, merge và hiệu ứng đẩy
   useEffect(() => {
     let animationFrameId;
     const update = () => {
       setCircles(prevCircles => {
-        let newCircles = [...prevCircles];
+        const newCircles = [...prevCircles];
 
-        // 1. Kiểm tra va chạm gộp: chỉ khi có hình đang kéo
+        // Xử lý merge: chỉ áp dụng khi có hình đang kéo
         if (draggingId) {
           const dragged = newCircles.find(c => c.id === draggingId);
           if (dragged && !dragged.isMerging) {
@@ -112,14 +122,21 @@ function Game() {
                 const dy = dragged.y - other.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist < dragged.radius + other.radius) {
-                  // Đánh dấu merging
+                  // Nếu cần, đảm bảo không spawn liên tục
+                  const now = Date.now();
+                  if (now - lastCollisionTimeRef.current > COLLISION_COOLDOWN) {
+                    lastCollisionTimeRef.current = now;
+                  }
+                  // Đánh dấu merging cho 2 hình
                   dragged.isMerging = true;
                   other.isMerging = true;
-                  // Xoá sau MERGE_DURATION
                   setTimeout(() => {
+                    // Loại bỏ 2 hình đã merge
                     setCircles(current =>
                       current.filter(c => c.id !== dragged.id && c.id !== other.id)
                     );
+                    // Sau khi merge mất, spawn thêm một hình mới
+                    spawnNewCircle();
                   }, MERGE_DURATION);
                 }
               }
@@ -127,7 +144,7 @@ function Game() {
           }
         }
 
-        // 2. Hiệu ứng đẩy nếu 2 hình cùng loại chạm nhau
+        // Hiệu ứng đẩy nếu 2 hình cùng loại chạm nhau (không spawn tại đây)
         for (let i = 0; i < newCircles.length; i++) {
           for (let j = i + 1; j < newCircles.length; j++) {
             const c1 = newCircles[i];
