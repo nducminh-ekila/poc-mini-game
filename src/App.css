@@ -1,0 +1,39 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.game-area {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  background-color: #f0f0f0;
+  overflow: hidden;
+}
+
+.circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  position: absolute;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.A {
+  background-color: red;
+}
+
+.C {
+  background-color: blue;
+}
+
+.D {
+  background-color: green;
+  opacity: 0.5;
+}
+
+.dragging {
+  opacity: 0.3;
+}
